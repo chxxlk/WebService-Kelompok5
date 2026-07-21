@@ -26,6 +26,13 @@ Client
 │ Order  ││Payment ││Inventory │
 │Service ││Service ││ Service  │
 └────────┘└────────┘└──────────┘
+           │
+           ▼
+┌──────────────────────────┐
+│       MongoDB Atlas       │
+│  - orders collection      │
+│  - sagalogs collection    │
+└──────────────────────────┘
 ```
 
 ## Saga Flow
@@ -33,9 +40,9 @@ Client
 ### Happy Path (Semua step berhasil)
 
 ```
-Step 1: POST /mock1/order      → Create order       → Simpan response
-Step 2: POST /mock2/payment    → Process payment    → Simpan response
-Step 3: POST /mock3/inventory  → Reserve inventory  → Simpan response
+Step 1: POST /mock1/order      → Create order       → Save order (CREATED) → Simpan response
+Step 2: POST /mock2/payment    → Process payment    → Update order (PAID)  → Simpan response
+Step 3: POST /mock3/inventory  → Reserve inventory  → Update order (COMPLETED) → Simpan response
 ```
 
 **Response JSON** berisi aggregated data dari ketiga step.
@@ -43,10 +50,38 @@ Step 3: POST /mock3/inventory  → Reserve inventory  → Simpan response
 ### Compensation (Ada step yang gagal)
 
 ```
-Step 3 gagal → Rollback Step 2 (refund) → Rollback Step 1 (cancel order)
+Step 3 gagal → Update order (CANCELLED) → Rollback Step 2 (refund) → Rollback Step 1 (cancel order)
 ```
 
 Setiap rollback di-log dengan jelas di console dan MongoDB.
+
+## MongoDB Collections
+
+### orders
+```json
+{
+  "_id": "abc12345",
+  "productName": "Laptop ASUS",
+  "quantity": 1,
+  "totalPrice": 12000000,
+  "status": "COMPLETED",
+  "createdAt": "2026-07-21T10:00:00",
+  "updatedAt": "2026-07-21T10:00:02"
+}
+```
+
+**Status progression:** `CREATED` → `PAID` → `COMPLETED` | `CANCELLED` (on compensation)
+
+### sagalogs
+```json
+{
+  "sagaId": "uuid-saga-id",
+  "step": "CREATE_ORDER",
+  "status": "ORDER_CREATED",
+  "message": "Order created: abc12345",
+  "timestamp": "2026-07-21T10:00:00"
+}
+```
 
 ## API Endpoints
 
@@ -148,7 +183,7 @@ Saga [abc-123] Compensation OK - Order cancelled: def45678
 Saga [abc-123] ═══ COMPENSATION COMPLETED ═══
 ```
 
-Semua log juga disimpan di MongoDB collection `saga_logs`.
+Semua log juga disimpan di MongoDB collection `sagalogs` dan order status di `orders`.
 
 ## Tech Stack
 
@@ -158,6 +193,28 @@ Semua log juga disimpan di MongoDB collection `saga_logs`.
 - **Spring Web MVC** (REST API)
 - **Spring Data MongoDB** (MongoDB Atlas Cloud)
 - **SLF4J / Logback** (logging)
+
+## Running the Project
+
+### Run Tests
+```bash
+# Windows
+.\mvnw.cmd test
+
+# Linux/Mac
+./mvnw test
+```
+
+### Run Application
+```bash
+# Windows
+.\mvnw.cmd spring-boot:run
+
+# Linux/Mac
+./mvnw spring-boot:run
+```
+
+**Note:** Update MongoDB credentials in `src/main/resources/application.properties` before running.
 
 ## Setup
 
