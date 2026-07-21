@@ -1,41 +1,46 @@
 package com.kelompok5.orchestrator.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 @RestController
-@RequestMapping("/")
+@RequestMapping("/mock1")
 public class MockController {
 
-    @GetMapping("/mock1")
-    public ResponseEntity<Map<String, Object>> mock1() {
+    private static final Logger log = LoggerFactory.getLogger(MockController.class);
+
+    private final Map<String, Map<String, Object>> orders = new LinkedHashMap<>();
+
+    @PostMapping("/order")
+    public ResponseEntity<Map<String, Object>> createOrder(@RequestBody Map<String, Object> body) {
+        String orderId = UUID.randomUUID().toString().substring(0, 8);
+        Map<String, Object> order = new HashMap<>(body);
+        order.put("orderId", orderId);
+        order.put("status", "CREATED");
+        orders.put(orderId, order);
+
+        log.info("[Order Service] Order created: {}", orderId);
+
         Map<String, Object> response = new HashMap<>();
+        response.put("orderId", orderId);
         response.put("status", "SUCCESS");
-        response.put("step", "Mock 1 Endpoint");
-        response.put("message", "Data from Mock 1 executed successfully");
+        response.put("message", "Order created successfully");
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/mock2")
-    public ResponseEntity<Map<String, Object>> mock2() {
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "SUCCESS");
-        response.put("step", "Mock 2 Endpoint");
-        response.put("message", "Data from Mock 2 executed successfully");
-        return ResponseEntity.ok(response);
-    }
+    @DeleteMapping("/order/{orderId}")
+    public ResponseEntity<Map<String, Object>> cancelOrder(@PathVariable String orderId) {
+        orders.remove(orderId);
 
-    @GetMapping("/mock3")
-    public ResponseEntity<Map<String, Object>> mock3() {
+        log.info("[Order Service] Order cancelled: {}", orderId);
+
         Map<String, Object> response = new HashMap<>();
         response.put("status", "SUCCESS");
-        response.put("step", "Mock 3 Endpoint");
-        response.put("message", "Data from Mock 3 executed successfully");
+        response.put("message", "Order cancelled: " + orderId);
         return ResponseEntity.ok(response);
     }
 }
