@@ -48,7 +48,9 @@ Client
 | Method | Endpoint | Deskripsi |
 |---|---|---|
 | GET | `/saga/run` | Jalankan seluruh saga (Step 1 → 2 → 3 + kompensasi) |
+| GET | `/saga/run?failStep=1` | Simulasi Step 1 gagal (order) |
 | GET | `/saga/run?failStep=2` | Simulasi Step 2 gagal (payment) + compensate Step 1 |
+| GET | `/saga/run?failStep=3` | Simulasi Step 3 gagal (inventory) + compensate Step 2 & 1 |
 | GET | `/saga/step1` | Jalankan Step 1 saja (order) |
 | GET | `/saga/step2` | Jalankan Step 2 saja (payment) |
 | GET | `/saga/step3` | Jalankan Step 3 saja (inventory) |
@@ -59,10 +61,13 @@ Client
 |---|---|---|
 | GET | `/mock1` | Order Service — buat pesanan |
 | GET | `/mock2` | Payment Service — proses pembayaran |
-| GET | `/mock2?fail=true` | Simulasi payment gagal |
 | GET | `/mock3` | Inventory Service — cek stok |
+| GET | `/mock1?fail=true` | Simulasi order gagal |
+| GET | `/mock2?fail=true` | Simulasi payment gagal |
+| GET | `/mock3?fail=true` | Simulasi inventory gagal |
 | POST | `/mock1/cancel` | Cancel Order (kompensasi Step 1) |
 | POST | `/mock2/refund` | Refund Payment (kompensasi Step 2) |
+| POST | `/mock3/restock` | Restock Inventory (kompensasi Step 3) |
 
 ## Response Format
 
@@ -108,6 +113,23 @@ Client
 }
 ```
 
+### Inventory Gagal (failStep=3)
+
+```json
+{
+  "sagaId": "uuid",
+  "overallStatus": "COMPENSATED",
+  "order": { "service": "order-service", "status": "success", "data": {...} },
+  "payment": { "service": "payment-service", "status": "success", "data": {...} },
+  "inventory": { "service": "inventory-service", "status": "failed", "data": null },
+  "compensations": [
+    { "step": 2, "service": "payment-service", "action": "refund", "status": "refunded" },
+    { "step": 1, "service": "order-service", "action": "cancel", "status": "cancelled" }
+  ],
+  "timestamp": "2026-07-22T03:00:00"
+}
+```
+
 ## Compensating Transaction
 
 | Step Gagal | Kompensasi |
@@ -134,6 +156,26 @@ Client
 [Saga][Compensation][Step 1] Response: {service=order-service, action=cancel, status=cancelled}
 [Saga][Compensation][Step 1] Saved to MongoDB (id=...)
 [Saga][uuid] ========== Payment Failed — Compensation Completed ==========
+```
+
+### Inventory Gagal (failStep=3)
+
+```
+[Saga][uuid] ========== Starting Saga Orchestration ==========
+[Saga][Step 1] Calling mock1 (order-service)...
+[Saga][Step 1] Response: {service=order-service, status=success, ...}
+[Saga][Step 2] Calling mock2 (payment-service)...
+[Saga][Step 2] Response: {service=payment-service, status=success, ...}
+[Saga][Step 3] Calling mock3 (inventory-service)...
+[Saga][Step 3] Response: {service=inventory-service, status=failed, ...}
+[Saga][uuid] Step 3 (inventory) failed — initiating compensation
+[Saga][uuid] Rolling back Step 2: refunding payment...
+[Saga][Compensation][Step 2] Refunding payment...
+[Saga][Compensation][Step 2] Response: {service=payment-service, action=refund, status=refunded}
+[Saga][uuid] Rolling back Step 1: cancelling order...
+[Saga][Compensation][Step 1] Cancelling order...
+[Saga][Compensation][Step 1] Response: {service=order-service, action=cancel, status=cancelled}
+[Saga][uuid] ========== Inventory Failed — Compensation Completed ==========
 ```
 
 ## Cara Menjalankan
