@@ -20,24 +20,24 @@ Client
   │
   ▼
 ┌─────────────────┐
-│  SagaController  │  GET /saga/run?failStep=2
+│  SagaController │  GET /saga/run?failStep=2
 └────────┬────────┘
          │
          ▼
 ┌──────────────────────┐
-│  OrchestratorService  │  Koordinasi Step 1 → 2 → 3
+│  OrchestratorService │  Koordinasi Step 1 → 2 → 3
 └────────┬─────────────┘         │ (jika gagal)
          │                       ▼
          ▼               Compensating
 ┌──────────────────┐     (rollback)
-│  WebClientService │
+│  WebClientService│
 └────────┬─────────┘
          │
          ▼
 ┌──────────────────┐     ┌─────────────────┐
-│  MockController   │◄────│  MongoDB Atlas   │
-│  /mock1, /mock2,  │     │  (saga_logs)     │
-│  /mock3           │     └─────────────────┘
+│  MockController  │◄────│  MongoDB Atlas  │
+│  /mock1, /mock2, │     │  (saga_logs)    │
+│  /mock3          │     └─────────────────┘
 └──────────────────┘
 ```
 
@@ -112,9 +112,7 @@ Client
 
 | Step Gagal | Kompensasi |
 |---|---|
-| Step 1 (Order) | Saga abort — tidak ada yang perlu dicancel |
 | Step 2 (Payment) | Cancel Order (compensate Step 1) |
-| Step 3 (Inventory) | Refund Payment + Cancel Order (compensate Step 2 + Step 1) |
 
 ## Log Output
 
@@ -148,11 +146,11 @@ Client
 # Test — semua sukses
 curl http://localhost:8080/saga/run
 
+# Test — salah satu 
+curl http://localhost:8080/saga/step1
+
 # Test — payment gagal
 curl "http://localhost:8080/saga/run?failStep=2"
-
-# Test — inventory gagal
-curl "http://localhost:8080/saga/run?failStep=3"
 
 # Test — mock langsung
 curl http://localhost:8080/mock1
