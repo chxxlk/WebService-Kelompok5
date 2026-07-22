@@ -15,33 +15,29 @@ public class WebClientService {
     }
 
     public Map<String, Object> getMock1() {
-        return getMock("/mock1", false);
-    }
-
-    public Map<String, Object> getMock1(boolean fail) {
-        return getMock("/mock1", fail);
+        return getMock("/mock1");
     }
 
     public Map<String, Object> getMock2() {
-        return getMock("/mock2", false);
+        return getMock("/mock2");
     }
 
     public Map<String, Object> getMock2(boolean fail) {
-        return getMock("/mock2", fail);
+        String queryUri = fail ? "/mock2?fail=true" : "/mock2";
+        return webClient.get()
+                .uri(queryUri)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .block();
     }
 
     public Map<String, Object> getMock3() {
-        return getMock("/mock3", false);
+        return getMock("/mock3");
     }
 
-    public Map<String, Object> getMock3(boolean fail) {
-        return getMock("/mock3", fail);
-    }
-
-    private Map<String, Object> getMock(String uri, boolean fail) {
-        String queryUri = fail ? uri + "?fail=true" : uri;
+    private Map<String, Object> getMock(String uri) {
         return webClient.get()
-                .uri(queryUri)
+                .uri(uri)
                 .retrieve()
                 .bodyToMono(Map.class)
                 .block();
@@ -58,14 +54,6 @@ public class WebClientService {
     public Map<String, Object> refundPayment() {
         return webClient.post()
                 .uri("/mock2/refund")
-                .retrieve()
-                .bodyToMono(Map.class)
-                .block();
-    }
-
-    public Map<String, Object> restockInventory() {
-        return webClient.post()
-                .uri("/mock3/restock")
                 .retrieve()
                 .bodyToMono(Map.class)
                 .block();

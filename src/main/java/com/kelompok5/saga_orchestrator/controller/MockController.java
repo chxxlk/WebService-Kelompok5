@@ -12,15 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MockController {
 
     @GetMapping("/mock1")
-    public ResponseEntity<Map<String, Object>> mock1(
-            @RequestParam(required = false, defaultValue = "false") boolean fail) {
-        if (fail) {
-            return ResponseEntity.ok(Map.of(
-                    "service", "order-service",
-                    "status", "failed",
-                    "data", Map.of("error", "Order creation failed")
-            ));
-        }
+    public ResponseEntity<Map<String, Object>> mock1() {
         return ResponseEntity.ok(Map.of(
                 "service", "order-service",
                 "status", "success",
@@ -54,15 +46,7 @@ public class MockController {
     }
 
     @GetMapping("/mock3")
-    public ResponseEntity<Map<String, Object>> mock3(
-            @RequestParam(required = false, defaultValue = "false") boolean fail) {
-        if (fail) {
-            return ResponseEntity.ok(Map.of(
-                    "service", "inventory-service",
-                    "status", "failed",
-                    "data", Map.of("error", "Stock not available")
-            ));
-        }
+    public ResponseEntity<Map<String, Object>> mock3() {
         return ResponseEntity.ok(Map.of(
                 "service", "inventory-service",
                 "status", "success",
@@ -89,15 +73,6 @@ public class MockController {
                 "service", "payment-service",
                 "action", "refund",
                 "status", "refunded"
-        ));
-    }
-
-    @PostMapping("/mock3/restock")
-    public ResponseEntity<Map<String, Object>> restockInventory() {
-        return ResponseEntity.ok(Map.of(
-                "service", "inventory-service",
-                "action", "restock",
-                "status", "restocked"
         ));
     }
 }

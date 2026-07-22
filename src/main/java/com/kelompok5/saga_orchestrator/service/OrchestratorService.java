@@ -59,8 +59,7 @@ public class OrchestratorService {
         log.info("[Saga][{}] ========== Starting Saga Orchestration ==========", sagaId);
 
         // --- Step 1: Order ---
-        boolean fail1 = failStep != null && failStep == 1;
-        StepResult orderResult = executeStep(sagaId, 1, "order-service", fail1, () -> webClientService.getMock1(fail1));
+        StepResult orderResult = executeStep(sagaId, 1, "order-service", false, () -> webClientService.getMock1());
         response.setOrder(orderResult);
         if ("failed".equals(orderResult.getStatus())) {
             log.error("[Saga][{}] Step 1 failed — cannot proceed, saga aborted", sagaId);
@@ -84,8 +83,7 @@ public class OrchestratorService {
         }
 
         // --- Step 3: Inventory ---
-        boolean fail3 = failStep != null && failStep == 3;
-        StepResult inventoryResult = executeStep(sagaId, 3, "inventory-service", fail3, () -> webClientService.getMock3(fail3));
+        StepResult inventoryResult = executeStep(sagaId, 3, "inventory-service", false, () -> webClientService.getMock3());
         response.setInventory(inventoryResult);
         if ("failed".equals(inventoryResult.getStatus())) {
             log.error("[Saga][{}] Step 3 (inventory) failed — initiating compensation", sagaId);
