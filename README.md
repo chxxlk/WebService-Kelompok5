@@ -1,6 +1,17 @@
-# Orchestrator Saga - Kelompok 5
+# Saga Orchestrator
 
-Sistem orkestrasi saga pattern untuk mengkoordinasi transaksi mikroservis menggunakan Spring Boot dan MongoDB Cloud (Atlas).
+Saga Orchestrator adalah microservice yang mengelola pola **Saga Pattern** dengan pendekatan **orchestration** untuk mengkoordinasikan transaksi lintas layanan. Setiap langkah (step) memiliki mekanisme **compensating transaction** (rollback) jika terjadi kegagalan.
+
+## Tech Stack
+
+| Komponen | Teknologi |
+|---|---|
+| Language | Java 21 |
+| Framework | Spring Boot 4.1.0 |
+| Build Tool | Maven |
+| HTTP Client | WebClient |
+| Database | MongoDB Atlas (Cloud) |
+| Pattern | Saga Orchestration + Compensating Transaction |
 
 ## Arsitektur
 
@@ -8,251 +19,216 @@ Sistem orkestrasi saga pattern untuk mengkoordinasi transaksi mikroservis menggu
 Client
   │
   ▼
-┌──────────────────────────┐
-│   OrderController        │  POST /api/orders
-│   (Orchestrator Entry)   │
-└──────────┬───────────────┘
-           │
-           ▼
-┌──────────────────────────┐
-│  OrderSagaOrchestrator   │  Core saga logic + compensation
-│  (Service Layer)         │
-└──────────┬───────────────┘
-           │ WebClient (HTTP)
-     ┌─────┼─────────┐
-     ▼     ▼         ▼
-┌────────┐┌────────┐┌──────────┐
-│ mock1  ││ mock2  ││  mock3   │
-│ Order  ││Payment ││Inventory │
-│Service ││Service ││ Service  │
-└────────┘└────────┘└──────────┘
-           │
-           ▼
-┌──────────────────────────┐
-│       MongoDB Atlas       │
-│  - orders collection      │
-│  - sagalogs collection    │
-└──────────────────────────┘
+┌─────────────────┐
+│  SagaController  │  GET /saga/run?failStep=2
+└────────┬────────┘
+         │
+         ▼
+┌──────────────────────┐
+│  OrchestratorService  │  Koordinasi Step 1 → 2 → 3
+└────────┬─────────────┘         │ (jika gagal)
+         │                       ▼
+         ▼               Compensating
+┌──────────────────┐     (rollback)
+│  WebClientService │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐     ┌─────────────────┐
+│  MockController   │◄────│  MongoDB Atlas   │
+│  /mock1, /mock2,  │     │  (saga_logs)     │
+│  /mock3           │     └─────────────────┘
+└──────────────────┘
 ```
 
-## Saga Flow
+## Endpoint
 
-### Happy Path (Semua step berhasil)
+### Saga Orchestration
 
-```
-Step 1: POST /mock1/order      → Create order       → Save order (CREATED) → Simpan response
-Step 2: POST /mock2/payment    → Process payment    → Update order (PAID)  → Simpan response
-Step 3: POST /mock3/inventory  → Reserve inventory  → Update order (COMPLETED) → Simpan response
-```
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/saga/run` | Jalankan seluruh saga (Step 1 → 2 → 3 + kompensasi) |
+| GET | `/saga/run?failStep=1` | Simulasi Step 1 gagal (order) |
+| GET | `/saga/run?failStep=2` | Simulasi Step 2 gagal (payment) + compenasate Step 1 |
+| GET | `/saga/run?failStep=3` | Simulasi Step 3 gagal (inventory) + compensate Step 2 & 1 |
+| GET | `/saga/step1` | Jalankan Step 1 saja (order) |
+| GET | `/saga/step2` | Jalankan Step 2 saja (payment) |
+| GET | `/saga/step3` | Jalankan Step 3 saja (inventory) |
 
-**Response JSON** berisi aggregated data dari ketiga step.
+### Mock Services (Simulasi Microservice)
 
-### Compensation (Ada step yang gagal)
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/mock1` | Order Service — buat pesanan |
+| GET | `/mock2` | Payment Service — proses pembayaran |
+| GET | `/mock3` | Inventory Service — cek stok |
+| GET | `/mock1?fail=true` | Simulasi order gagal |
+| GET | `/mock2?fail=true` | Simulasi payment gagal |
+| GET | `/mock3?fail=true` | Simulasi inventory gagal |
+| POST | `/mock1/cancel` | Cancel Order (kompensasi Step 1) |
+| POST | `/mock2/refund` | Refund Payment (kompensasi Step 2) |
+| POST | `/mock3/restock` | Restock Inventory (kompensasi Step 3) |
 
-```
-Step 3 gagal → Update order (CANCELLED) → Rollback Step 2 (refund) → Rollback Step 1 (cancel order)
-```
+## Response Format
 
-Setiap rollback di-log dengan jelas di console dan MongoDB.
+### Success
 
-## MongoDB Collections
-
-### orders
 ```json
 {
-  "_id": "abc12345",
-  "productName": "Laptop ASUS",
-  "quantity": 1,
-  "totalPrice": 12000000,
-  "status": "COMPLETED",
-  "createdAt": "2026-07-21T10:00:00",
-  "updatedAt": "2026-07-21T10:00:02"
-}
-```
-
-**Status progression:** `CREATED` → `PAID` → `COMPLETED` | `CANCELLED` (on compensation)
-
-### sagalogs
-```json
-{
-  "sagaId": "uuid-saga-id",
-  "step": "CREATE_ORDER",
-  "status": "ORDER_CREATED",
-  "message": "Order created: abc12345",
-  "timestamp": "2026-07-21T10:00:00"
-}
-```
-
-## API Endpoints
-
-### Orchestration
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/orders` | Place order (memulai saga) |
-
-**Request Body:**
-```json
-{
-  "productName": "Laptop ASUS",
-  "quantity": 1,
-  "totalPrice": 12000000
-}
-```
-
-**Response (Success):**
-```json
-{
-  "sagaId": "uuid-saga-id",
-  "orderId": "abc12345",
-  "status": "COMPLETED",
-  "message": "Order placed successfully",
-  "executedSteps": ["CREATE_ORDER", "PROCESS_PAYMENT", "RESERVE_INVENTORY"],
-  "step1CreateOrder": {
-    "orderId": "abc12345",
-    "status": "SUCCESS",
-    "message": "Order created successfully"
+  "sagaId": "uuid",
+  "overallStatus": "SUCCESS",
+  "order": {
+    "service": "order-service",
+    "status": "success",
+    "data": { "orderId": "ORD-001", "amount": 150000, "currency": "IDR" }
   },
-  "step2ProcessPayment": {
-    "paymentId": "pay12345",
-    "status": "SUCCESS",
-    "message": "Payment processed successfully"
+  "payment": {
+    "service": "payment-service",
+    "status": "success",
+    "data": { "paymentId": "PAY-001", "method": "credit_card", "amount": 150000 }
   },
-  "step3ReserveInventory": {
-    "reservationId": "inv12345",
-    "status": "SUCCESS",
-    "message": "Inventory reserved successfully"
-  }
+  "inventory": {
+    "service": "inventory-service",
+    "status": "success",
+    "data": { "sku": "ITEM-001", "stock": 50, "warehouse": "WH-JKT" }
+  },
+  "compensations": [],
+  "timestamp": "2026-07-22T03:00:00"
 }
 ```
 
-**Response (Compensated):**
+### Payment Gagal (failStep=2)
+
 ```json
 {
-  "sagaId": "uuid-saga-id",
-  "orderId": "abc12345",
-  "status": "COMPENSATED",
-  "message": "Payment failed, saga compensated: ...",
-  "executedSteps": ["CREATE_ORDER"],
-  "step1CreateOrder": { "orderId": "abc12345", "status": "SUCCESS", ... },
-  "step2ProcessPayment": null,
-  "step3ReserveInventory": null
+  "sagaId": "uuid",
+  "overallStatus": "COMPENSATED",
+  "order": { "service": "order-service", "status": "success", "data": {...} },
+  "payment": { "service": "payment-service", "status": "failed", "data": {...} },
+  "inventory": null,
+  "compensations": [
+    { "step": 1, "service": "order-service", "action": "cancel", "status": "cancelled" }
+  ],
+  "timestamp": "2026-07-22T03:00:00"
 }
 ```
 
-### Mock Microservices
+### Inventory Gagal (failStep=3)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/mock1/order` | Order Service - Create order |
-| DELETE | `/mock1/order/{orderId}` | Order Service - Cancel order (compensation) |
-| POST | `/mock2/payment` | Payment Service - Process payment |
-| POST | `/mock2/payment/refund/{orderId}` | Payment Service - Refund (compensation) |
-| POST | `/mock3/inventory` | Inventory Service - Reserve stock |
-| DELETE | `/mock3/inventory/{orderId}` | Inventory Service - Release stock (compensation) |
-
-## Logging
-
-Setiap step orchestrator mencatat log yang jelas di console:
-
-```
-========================================
-Saga [abc-123] STARTED - Product: Laptop ASUS, Qty: 1, Total: 12000000
-========================================
-Saga [abc-123] Step 1 - Calling Order Service (POST /mock1/order)...
-[Order Service] Order created: def45678
-Saga [abc-123] Step 1 SUCCESS - Response: {orderId=def45678, status=SUCCESS, ...}
-Saga [abc-123] Step 2 - Calling Payment Service (POST /mock2/payment)...
-[Payment Service] Payment processed: pay12345 for order: def45678
-Saga [abc-123] Step 2 SUCCESS - Response: {paymentId=pay12345, status=SUCCESS, ...}
-Saga [abc-123] Step 3 - Calling Inventory Service (POST /mock3/inventory)...
-[Inventory Service] Inventory reserved: inv98765 for order: def45678
-Saga [abc-123] Step 3 SUCCESS - Response: {reservationId=inv98765, status=SUCCESS, ...}
-========================================
-Saga [abc-123] COMPLETED - All 3 steps succeeded
-========================================
+```json
+{
+  "sagaId": "uuid",
+  "overallStatus": "COMPENSATED",
+  "order": { "service": "order-service", "status": "success", "data": {...} },
+  "payment": { "service": "payment-service", "status": "success", "data": {...} },
+  "inventory": { "service": "inventory-service", "status": "failed", "data": null },
+  "compensations": [
+    { "step": 2, "service": "payment-service", "action": "refund", "status": "refunded" },
+    { "step": 1, "service": "order-service", "action": "cancel", "status": "cancelled" }
+  ],
+  "timestamp": "2026-07-22T03:00:00"
+}
 ```
 
-Kompensasi juga di-log:
+## Compensating Transaction
+
+| Step Gagal | Kompensasi |
+|---|---|
+| Step 1 (Order) | Saga abort — tidak ada yang perlu dicancel |
+| Step 2 (Payment) | Cancel Order (compensate Step 1) |
+| Step 3 (Inventory) | Refund Payment + Cancel Order (compensate Step 2 + Step 1) |
+
+## Log Output
+
+### Payment Gagal (failStep=2)
+
 ```
-Saga [abc-123] ═══ COMPENSATION STARTED ═══ for steps: [CREATE_ORDER, PROCESS_PAYMENT]
-Saga [abc-123] Compensating PROCESS_PAYMENT - Calling refund...
-Saga [abc-123] Compensation OK - Payment refunded for order: def45678
-Saga [abc-123] Compensating CREATE_ORDER - Calling cancel...
-Saga [abc-123] Compensation OK - Order cancelled: def45678
-Saga [abc-123] ═══ COMPENSATION COMPLETED ═══
+[Saga][uuid] ========== Starting Saga Orchestration ==========
+[Saga][Step 1] Calling mock1 (order-service)...
+[Saga][Step 1] Response: {service=order-service, status=success, ...}
+[Saga][Step 1] Saved to MongoDB (id=...)
+[Saga][Step 2] Calling mock2 (payment-service)...
+[Saga][Step 2] Response: {service=payment-service, status=failed, ...}
+[Saga][Step 2] Saved to MongoDB (id=...)
+[Saga][uuid] Step 2 (payment) failed — initiating compensation
+[Saga][uuid] Rolling back Step 1: cancelling order...
+[Saga][Compensation][Step 1] Cancelling order...
+[Saga][Compensation][Step 1] Response: {service=order-service, action=cancel, status=cancelled}
+[Saga][Compensation][Step 1] Saved to MongoDB (id=...)
+[Saga][uuid] ========== Payment Failed — Compensation Completed ==========
 ```
 
-Semua log juga disimpan di MongoDB collection `sagalogs` dan order status di `orders`.
+### Inventory Gagal (failStep=3)
 
-## Tech Stack
+```
+[Saga][uuid] ========== Starting Saga Orchestration ==========
+[Saga][Step 1] Calling mock1 (order-service)...
+[Saga][Step 1] Response: {service=order-service, status=success, ...}
+[Saga][Step 2] Calling mock2 (payment-service)...
+[Saga][Step 2] Response: {service=payment-service, status=success, ...}
+[Saga][Step 3] Calling mock3 (inventory-service)...
+[Saga][Step 3] Response: {service=inventory-service, status=failed, ...}
+[Saga][uuid] Step 3 (inventory) failed — initiating compensation
+[Saga][uuid] Rolling back Step 2: refunding payment...
+[Saga][Compensation][Step 2] Refunding payment...
+[Saga][Compensation][Step 2] Response: {service=payment-service, action=refund, status=refunded}
+[Saga][uuid] Rolling back Step 1: cancelling order...
+[Saga][Compensation][Step 1] Cancelling order...
+[Saga][Compensation][Step 1] Response: {service=order-service, action=cancel, status=cancelled}
+[Saga][uuid] ========== Inventory Failed — Compensation Completed ==========
+```
 
-- **Java 17**
-- **Spring Boot 4.1.0**
-- **Spring WebFlux** (WebClient untuk HTTP calls antar service)
-- **Spring Web MVC** (REST API)
-- **Spring Data MongoDB** (MongoDB Atlas Cloud)
-- **SLF4J / Logback** (logging)
+## Cara Menjalankan
 
-## Running the Project
-
-### Run Tests
 ```bash
-# Windows
-.\mvnw.cmd test
+# Build
+./mvnw.cmd clean compile
 
-# Linux/Mac
-./mvnw test
+# Run
+./mvnw.cmd spring-boot:run
+
+# Test — semua sukses
+curl http://localhost:8080/saga/run
+
+# Test — payment gagal
+curl "http://localhost:8080/saga/run?failStep=2"
+
+# Test — inventory gagal
+curl "http://localhost:8080/saga/run?failStep=3"
+
+# Test — mock langsung
+curl http://localhost:8080/mock1
+curl "http://localhost:8080/mock2?fail=true"
 ```
 
-### Run Application
-```bash
-# Windows
-.\mvnw.cmd spring-boot:run
+## Konfigurasi
 
-# Linux/Mac
-./mvnw spring-boot:run
+`application.properties`:
+
+```properties
+spring.application.name=saga_orchestrator
+spring.mongodb.uri=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/?appName=<app>
 ```
 
-**Note:** Update MongoDB credentials in `src/main/resources/application.properties` before running.
-
-## Setup
-
-1. Buat akun di [MongoDB Atlas](https://www.mongodb.com/atlas)
-2. Buat cluster gratis
-3. Copy connection string
-4. Edit `src/main/resources/application.properties`:
-   ```
-   spring.mongodb.uri=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/orchestrator-saga?retryWrites=true&w=majority
-   ```
-5. Jalankan:
-   ```
-   ./mvnw spring-boot:run
-   ```
-
-## Struktur Proyek
+## Struktur Project
 
 ```
-src/main/java/com/kelompok5/orchestrator/
-├── OrchestratorSagaApplication.java     # Entry point
+src/main/java/com/kelompok5/saga_orchestrator/
+├── SagaOrchestratorApplication.java
 ├── config/
-│   └── WebClientConfig.java             # WebClient configuration
+│   └── WebClientConfig.java
 ├── controller/
-│   ├── OrderController.java             # POST /api/orders
-│   ├── MockController.java              # Mock Order Service
-│   ├── PaymentController.java           # Mock Payment Service
-│   └── InventoryController.java         # Mock Inventory Service
+│   ├── MockController.java
+│   └── SagaController.java
 ├── dto/
-│   ├── OrderRequest.java                # Request DTO
-│   └── OrderResponse.java              # Aggregated response DTO
+│   ├── SagaResponse.java
+│   ├── StepResult.java
+│   └── CompensationResult.java
 ├── model/
-│   ├── Order.java                       # MongoDB document
-│   ├── SagaLog.java                     # Saga execution log document
-│   ├── SagaStep.java                    # Enum step
-│   └── SagaStatus.java                  # Enum status
+│   └── SagaLog.java
 ├── repository/
-│   ├── OrderRepository.java             # MongoDB repo orders
-│   └── SagaLogRepository.java           # MongoDB repo saga logs
+│   └── SagaLogRepository.java
 └── service/
-    └── OrderSagaOrchestrator.java       # Core orchestration + compensation
+    ├── OrchestratorService.java
+    └── WebClientService.java
 ```

@@ -7,6 +7,7 @@ public class OrderRequest {
     private String productName;
     private int quantity;
     private BigDecimal totalPrice;
+    private Boolean forceError;
 
     public OrderRequest() {
     }
@@ -39,5 +40,13 @@ public class OrderRequest {
 
     public void setTotalPrice(BigDecimal totalPrice) {
         this.totalPrice = totalPrice;
+    }
+
+    public Boolean getForceError() {
+        return forceError;
+    }
+
+    public void setForceError(Boolean forceError) {
+        this.forceError = forceError;
     }
 }

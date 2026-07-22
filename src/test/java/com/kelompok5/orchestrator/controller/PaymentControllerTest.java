@@ -1,7 +1,9 @@
 package com.kelompok5.orchestrator.controller;
 
+import com.kelompok5.orchestrator.repository.ServiceLogRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -13,6 +15,9 @@ class PaymentControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private ServiceLogRepository serviceLogRepository;
 
     @Test
     void processPaymentReturnsPaymentIdAndSuccess() throws Exception {
